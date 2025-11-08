@@ -13,7 +13,7 @@ binaries:
     repo: pymumu/smartdns
     keyword: x86_64-debian
     exec: smartdns
-    type: deb
+    type: deb zip
     extract: false
 
   - name: sing-box
