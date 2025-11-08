@@ -2,9 +2,8 @@ name: Update Binaries
 
 on:
   schedule:
-    # 每天早上 4:00 自动执行（UTC 时间）
-    - cron: "0 20 * * *"
-  workflow_dispatch: # 允许手动触发
+    - cron: "0 20 * * *" # 每天早上4点（UTC 20点）
+  workflow_dispatch:
 
 jobs:
   update:
@@ -25,24 +24,24 @@ jobs:
           set -e
           echo "🟦 开始执行二进制更新任务 $(date '+%F %T')"
 
-          # ========== 配置区（只改这里） ==========
+          # ========== 配置区 ==========
           BASE_DIR="/tmp/update_binaries"
-          mkdir -p "$BASE_DIR"
+          TARGET_BASE="bin"   # 所有程序将存放在仓库的 bin/ 目录下
+          mkdir -p "$BASE_DIR" "$TARGET_BASE/mosdns"
 
-          # 二进制清单：名称 | 下载基础地址 | 包名 | 安装目录 | 主程序名
           binaries=(
-            "mosdns|https://github.com/yyysuo/mosdns/releases/latest/download|mosdns-linux-amd64.zip|/cus/mosdns|mosdns"
-            "smartdns|https://github.com/pymumu/smartdns/releases/latest/download|smartdns-x86_64.zip|/cus/smartdns|smartdns"
-            # 可以继续追加 ↓
-            # "sing-box|https://github.com/SagerNet/sing-box/releases/latest/download|sing-box-linux-amd64.tar.gz|/cus/sing-box|sing-box"
+            "mosdns|https://github.com/yyysuo/mosdns/releases/latest/download|mosdns-linux-amd64.zip|mosdns|mosdns"
+            # 继续添加更多：
+            # "smartdns|https://github.com/pymumu/smartdns/releases/latest/download|smartdns-x86_64.zip|smartdns|smartdns"
+            # "sing-box|https://github.com/SagerNet/sing-box/releases/latest/download|sing-box-linux-amd64.tar.gz|sing-box|sing-box"
           )
-          # =======================================
+          # =============================
 
           update_binary() {
             local name="$1"
             local url="$2"
             local pkg="$3"
-            local dir="$4"
+            local folder="$4"
             local bin="$5"
             local tmpdir="$BASE_DIR/${name}_tmp"
 
@@ -63,32 +62,24 @@ jobs:
               return
             fi
 
-            local binpath
-            binpath=$(find "$tmpdir" -type f -name "$bin*" | head -n 1)
-            if [[ -z "$binpath" ]]; then
-              echo "❌ 未找到可执行文件 $bin"
-              return
-            fi
-
-            chmod +x "$binpath"
-            mkdir -p "$dir"
-            mv -f "$binpath" "$dir/$bin"
-            echo "✅ $name 更新完成 → $dir/$bin"
+            local target_dir="$TARGET_BASE/$folder"
+            mkdir -p "$target_dir"
+            rm -rf "$target_dir"/*
+            mv "$tmpdir"/* "$target_dir"/
+            echo "✅ $name 更新完成 → $target_dir/"
           }
 
           for entry in "${binaries[@]}"; do
-            IFS="|" read -r name url pkg dir bin <<< "$entry"
-            update_binary "$name" "$url" "$pkg" "$dir" "$bin"
+            IFS="|" read -r name url pkg folder bin <<< "$entry"
+            update_binary "$name" "$url" "$pkg" "$folder" "$bin"
           done
 
           echo "🎉 全部更新完成 $(date '+%F %T')"
 
-      - name: Commit and push (optional)
-        if: success()
+      - name: Commit and push updates
         run: |
-          # 如果这些文件在仓库中（例如你存放了 /cus 目录），则提交变动
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-          git add .
-          git commit -m "Auto update binaries $(date '+%F %T')" || echo "No changes"
+          git add bin/
+          git commit -m "Auto update binaries $(date '+%F %T')" || echo "No changes to commit"
           git push || true
