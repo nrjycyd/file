@@ -81,7 +81,7 @@ jobs:
                 curl -L -o "$pkgfile" "$url"
 
                 # 判断是否解压
-                if [[ " ${extract_types[*]} " == *" $ft "* ]]; then
+                if [[ " ${extract_types[*]} " == *"$ft"* ]]; then
                   target_dir="$TARGET_BASE/$name/$kw"
                   mkdir -p "$target_dir"
 
@@ -108,8 +108,17 @@ jobs:
                   shopt -u dotglob
 
                   # 仅对压缩包判断是否保留
-                  if [[ ! " ${keep_types[*]} " == *" $ft "* ]]; then
-                    rm -f "$pkgfile"
+                  if [[ "$ft" == "zip" || "$ft" == "tar.gz" ]]; then
+                    keep_this=false
+                    for k in "${keep_types[@]}"; do
+                      if [[ "$k" == "$ft" ]]; then
+                        keep_this=true
+                        break
+                      fi
+                    done
+                    if [[ "$keep_this" != true ]]; then
+                      rm -f "$pkgfile"
+                    fi
                   fi
 
                 else
