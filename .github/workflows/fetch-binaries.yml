@@ -2,7 +2,7 @@ name: Update Binaries
 
 on:
   schedule:
-    - cron: "0 20 * * *" # 每天自动执行（UTC 20点）
+    - cron: "0 20 * * *"
   workflow_dispatch:
 
 jobs:
@@ -36,7 +36,6 @@ jobs:
             exit 1
           fi
 
-          # 清理 bin/ 下旧内容，但保留 binaries.yml
           echo "🧹 清理 bin/ 目录（保留 binaries.yml）"
           for item in "$TARGET_BASE"/*; do
               [[ "$item" == "$TARGET_BASE/binaries.yml" ]] && continue
@@ -80,8 +79,8 @@ jobs:
                 echo "    ⬇️ 下载: $url"
                 curl -L -o "$pkgfile" "$url"
 
-                # 判断是否解压
-                if [[ " ${extract_types[*]} " == *" $ft "* ]]; then
+                if [[ " ${extract_types[*]} " == *"$ft"* ]]; then
+                  # 需要解压的压缩包
                   target_dir="$TARGET_BASE/$name/$kw"
                   mkdir -p "$target_dir"
 
@@ -90,12 +89,9 @@ jobs:
                     unzip -qo "$pkgfile" -d "$target_dir"
                   elif [[ "$ft" == "tar.gz" ]]; then
                     tar -xzf "$pkgfile" -C "$target_dir"
-                  else
-                    echo "⚠️ 不支持的解压格式: $ft"
-                    continue
                   fi
 
-                  # 平铺文件，覆盖同名文件
+                  # 平铺解压文件，覆盖顶层文件夹
                   shopt -s dotglob
                   for item in "$target_dir"/*; do
                     if [[ -d "$item" ]]; then
@@ -107,13 +103,20 @@ jobs:
                   done
                   shopt -u dotglob
 
-                  # 仅对压缩包判断是否保留
-                  if [[ ! " ${keep_types[*]} " == *" $ft "* ]]; then
-                    rm -f "$pkgfile"
+                  # 保留压缩包
+                  keep_this=false
+                  for k in "${keep_types[@]}"; do
+                    [[ "$k" == "$ft" ]] && keep_this=true && break
+                  done
+                  if [[ "$keep_this" == true ]]; then
+                    cp -f "$pkgfile" "$TARGET_BASE/$name/$kw.$ft"
                   fi
 
+                  # 删除临时 pkgfile
+                  rm -f "$pkgfile"
+
                 else
-                  # 不解压文件（如 deb/ipk）直接移动，不受 keep_pkg 限制
+                  # 不解压文件 (deb/ipk)
                   target_file="$TARGET_BASE/$name/$kw.$ft"
                   mkdir -p "$(dirname "$target_file")"
                   mv -f "$pkgfile" "$target_file"
