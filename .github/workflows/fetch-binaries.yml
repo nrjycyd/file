@@ -57,47 +57,50 @@ jobs:
             echo "  ⬇️ 下载: $url"
             curl -L -o "$pkgfile" "$url"
 
-            # 目标文件夹
-            target_dir="$TARGET_BASE/$name/$keyword"
-            rm -rf "$target_dir"
-            mkdir -p "$target_dir"
-
             if [[ "$extract" == "true" ]]; then
-              echo "  📂 解压中..."
-              extract_dir="$tmpdir/extracted"
-              mkdir -p "$extract_dir"
+              # 需要解压，目标为目录
+              target_dir="$TARGET_BASE/$name/$keyword"
+              rm -rf "$target_dir"
+              mkdir -p "$target_dir"
 
+              # 重命名压缩包到临时路径
+              tmp_pkg="$tmpdir/${keyword}.${type}"
+              mv "$pkgfile" "$tmp_pkg"
+
+              echo "  📂 解压中..."
               if [[ "$type" == "zip" ]]; then
-                unzip -qo "$pkgfile" -d "$extract_dir"
+                unzip -qo "$tmp_pkg" -d "$target_dir"
               elif [[ "$type" == "tar.gz" ]]; then
-                tar -xzf "$pkgfile" -C "$extract_dir"
+                tar -xzf "$tmp_pkg" -C "$target_dir"
               else
                 echo "⚠️ 不支持的解压格式: $type"
                 continue
               fi
 
-              # 平铺内容到目标目录，去掉压缩包自带顶层目录
+              # 平铺内容（去掉压缩包自带顶层目录）
               shopt -s dotglob
-              for item in "$extract_dir"/*; do
+              for item in "$target_dir"/*/*; do
                 mv "$item" "$target_dir"/
               done
               shopt -u dotglob
 
               # 删除压缩包
-              rm -f "$pkgfile"
+              rm -f "$tmp_pkg"
 
             else
-              # 不解压，直接保存二进制或 .deb
-              mv "$pkgfile" "$target_dir"/
+              # 不解压，直接重命名到目标文件
+              target_file="$TARGET_BASE/$name/$keyword.$type"
+              mkdir -p "$(dirname "$target_file")"
+              mv "$pkgfile" "$target_file"
             fi
 
             # 设置可执行权限（如果解压后有 exec 文件）
-            binpath=$(find "$target_dir" -type f -name "$exec*" | head -n1)
+            binpath=$(find "$TARGET_BASE/$name/$keyword" -type f -name "$exec*" 2>/dev/null | head -n1)
             if [[ -n "$binpath" ]]; then
               chmod +x "$binpath"
             fi
 
-            echo "✅ $name 更新完成 → $target_dir/"
+            echo "✅ $name 更新完成"
           done
 
           echo "🎉 全部更新完成 $(date '+%F %T')"
