@@ -36,7 +36,6 @@ jobs:
             name=$(yq -r ".binaries[$i].name" "$CONFIG_FILE")
             repo=$(yq -r ".binaries[$i].repo" "$CONFIG_FILE")
             keyword=$(yq -r ".binaries[$i].keyword" "$CONFIG_FILE")
-            target=$(yq -r ".binaries[$i].target" "$CONFIG_FILE")
             exec=$(yq -r ".binaries[$i].exec" "$CONFIG_FILE")
             type=$(yq -r ".binaries[$i].type" "$CONFIG_FILE")
 
@@ -70,8 +69,8 @@ jobs:
               continue
             fi
 
-            # 目标文件夹
-            target_dir="$TARGET_BASE/$target"
+            # 目标文件夹：bin/{name}/{keyword}
+            target_dir="$TARGET_BASE/$name/$keyword"
             rm -rf "$target_dir"
             mkdir -p "$target_dir"
             mv "$extract_dir"/* "$target_dir"/
