@@ -77,10 +77,15 @@ jobs:
                 continue
               fi
 
-              # 平铺内容（去掉压缩包自带顶层目录）
+              # 平铺内容，去掉压缩包自带顶层目录（稳健逻辑）
               shopt -s dotglob
-              for item in "$target_dir"/*/*; do
-                mv "$item" "$target_dir"/
+              for item in "$target_dir"/*; do
+                  if [[ -d "$item" ]]; then
+                      for sub in "$item"/*; do
+                          mv "$sub" "$target_dir"/
+                      done
+                      rmdir "$item" || true
+                  fi
               done
               shopt -u dotglob
 
