@@ -28,19 +28,6 @@ jobs:
 
           CONFIG_FILE=".github/workflows/binaries.conf"
           BASE_DIR="/tmp/update_binaries"
-          TARGET_BASE="bin"
-          mkdir -p "$BASE_DIR" "$TARGET_BASE"
-
-          if [[ ! -f "$CONFIG_FILE" ]]; then
-            echo "❌ 找不到配置文件 $CONFIG_FILE"
-            exit 1
-          fi
-
-          echo "🧹 清理 bin/ 目录（保留 binaries.yml）"
-          for item in "$TARGET_BASE"/*; do
-              [[ "$item" == "$TARGET_BASE/binaries.yml" ]] && continue
-              rm -rf "$item"
-          done
 
           count=$(yq '.binaries | length' "$CONFIG_FILE")
           echo "📦 读取到 $count 个二进制任务"
@@ -53,12 +40,11 @@ jobs:
             type=$(yq -r ".binaries[$i].type" "$CONFIG_FILE")
             extract=$(yq -r ".binaries[$i].extract" "$CONFIG_FILE")
             keep_pkg=$(yq -r ".binaries[$i].keep_pkg" "$CONFIG_FILE")
+            target_base=$(yq -r ".binaries[$i].target_base // \"bin\"" "$CONFIG_FILE")
+
+            mkdir -p "$BASE_DIR/${name}_tmp" "$target_base"
 
             echo "🟩 更新 $name..."
-            tmpdir="$BASE_DIR/${name}_tmp"
-            mkdir -p "$tmpdir"
-
-            echo "  🔍 获取最新 release..."
             release_json=$(curl -s "https://api.github.com/repos/${repo}/releases/latest")
 
             IFS='|' read -ra keywords <<< "$keyword"
@@ -68,34 +54,27 @@ jobs:
 
             for kw in "${keywords[@]}"; do
               for ft in "${types[@]}"; do
-                echo "  🔹 处理组合: $kw.$ft"
                 url=$(echo "$release_json" | jq -r ".assets[] | select(.name | contains(\"${kw}\") and endswith(\"${ft}\")) | .browser_download_url" | head -n1)
-                if [[ -z "$url" ]]; then
-                  echo "⚠️ 未找到文件: $kw.$ft"
-                  continue
-                fi
+                [[ -z "$url" ]] && continue
 
-                pkgfile="$tmpdir/$(basename "$url")"
+                pkgfile="$BASE_DIR/${name}_tmp/$(basename "$url")"
                 echo "    ⬇️ 下载: $url"
                 curl -L -o "$pkgfile" "$url"
 
+                target_dir="$target_base/$name/$kw"
+                mkdir -p "$target_dir"
+
                 if [[ " ${extract_types[*]} " == *"$ft"* ]]; then
-                  # 需要解压的压缩包
-                  target_dir="$TARGET_BASE/$name/$kw"
-                  mkdir -p "$target_dir"
+                  echo "    📂 解压 $ft"
+                  if [[ "$ft" == "zip" ]]; then unzip -qo "$pkgfile" -d "$target_dir"; fi
+                  if [[ "$ft" == "tar.gz" ]]; then tar -xzf "$pkgfile" -C "$target_dir"; fi
 
-                  echo "    📂 解压中..."
-                  if [[ "$ft" == "zip" ]]; then
-                    unzip -qo "$pkgfile" -d "$target_dir"
-                  elif [[ "$ft" == "tar.gz" ]]; then
-                    tar -xzf "$pkgfile" -C "$target_dir"
-                  fi
-
-                  # 平铺解压文件，覆盖顶层文件夹
+                  # 平铺文件
                   shopt -s dotglob
                   for item in "$target_dir"/*; do
                     if [[ -d "$item" ]]; then
                       for sub in "$item"/*; do
+                        # 如果已存在文件，覆盖
                         mv -f "$sub" "$target_dir"/
                       done
                       rmdir "$item" || true
@@ -105,11 +84,10 @@ jobs:
 
                   # 保留压缩包
                   keep_this=false
-                  for k in "${keep_types[@]}"; do
-                    [[ "$k" == "$ft" ]] && keep_this=true && break
-                  done
+                  for k in "${keep_types[@]}"; do [[ "$k" == "$ft" ]] && keep_this=true && break; done
                   if [[ "$keep_this" == true ]]; then
-                    cp -f "$pkgfile" "$TARGET_BASE/$name/$kw.$ft"
+                    mkdir -p "$target_base/$name"
+                    cp -f "$pkgfile" "$target_base/$name/$kw.$ft"
                   fi
 
                   # 删除临时 pkgfile
@@ -117,19 +95,16 @@ jobs:
 
                 else
                   # 不解压文件 (deb/ipk)
-                  target_file="$TARGET_BASE/$name/$kw.$ft"
+                  target_file="$target_base/$name/$kw.$ft"
                   mkdir -p "$(dirname "$target_file")"
                   mv -f "$pkgfile" "$target_file"
                 fi
 
                 # 设置可执行权限
-                binpath=$(find "$TARGET_BASE/$name/$kw" -type f -name "$exec*" 2>/dev/null | head -n1)
-                if [[ -n "$binpath" ]]; then
-                  chmod +x "$binpath"
-                fi
+                binpath=$(find "$target_base/$name/$kw" -type f -name "$exec*" 2>/dev/null | head -n1)
+                [[ -n "$binpath" ]] && chmod +x "$binpath"
               done
             done
-
             echo "✅ $name 更新完成"
           done
 
@@ -139,6 +114,6 @@ jobs:
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-          git add bin/
-          git commit -m "Auto update binaries $(date '+%F %T')" || echo "No changes to commit"
+          git add .
+          git commit -m "Auto update binaries $(date '+%F %T')" || echo "No changes"
           git push || true
