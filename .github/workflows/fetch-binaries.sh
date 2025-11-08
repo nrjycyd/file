@@ -1,16 +1,10 @@
 #!/bin/bash
 set -e
+
 echo "🟦 开始执行二进制更新任务 $(date '+%F %T')"
 
-# CONFIG_FILE 路径需要调整，使其相对于工作流的根目录
 CONFIG_FILE=".github/workflows/binaries.conf"
 BASE_DIR="/tmp/update_binaries"
-
-# 确保脚本不会在没有配置文件的环境下失败
-if [[ ! -f "$CONFIG_FILE" ]]; then
-    echo "❌ 错误：配置文件 $CONFIG_FILE 不存在！"
-    exit 1
-fi
 
 count=$(yq '.binaries | length' "$CONFIG_FILE")
 echo "📦 读取到 $count 个二进制任务"
@@ -23,27 +17,12 @@ for ((i=0; i<count; i++)); do
   type=$(yq -r ".binaries[$i].type" "$CONFIG_FILE")
   extract=$(yq -r ".binaries[$i].extract" "$CONFIG_FILE")
   keep_pkg=$(yq -r ".binaries[$i].keep_pkg" "$CONFIG_FILE")
-  # 兼容旧配置（如 target_base 为空），使用默认值 "bin"
   target_base=$(yq -r ".binaries[$i].target_base // \"bin\"" "$CONFIG_FILE")
 
   mkdir -p "$BASE_DIR/${name}_tmp" "$target_base"
 
   echo "🟩 更新 $name..."
-  # 从环境变量读取 GitHub Token，如果存在，用于提高 API 限制
-  if [[ -n "$GITHUB_TOKEN" ]]; then
-      auth_header="-H \"Authorization: Bearer $GITHUB_TOKEN\""
-  else
-      auth_header=""
-  fi
-  
-  # 使用 eval 来正确执行带有引用的 curl 命令
-  release_json=$(eval "curl -s $auth_header https://api.github.com/repos/${repo}/releases/latest")
-
-  # 检查 API 调用是否成功
-  if [[ "$(echo "$release_json" | jq -r '.message')" == "Not Found" ]]; then
-      echo "    ⚠️ 仓库 $repo 未找到或 API 调用失败，跳过。"
-      continue
-  fi
+  release_json=$(curl -s "https://api.github.com/repos/${repo}/releases/latest")
 
   IFS='|' read -ra keywords <<< "$keyword"
   IFS='|' read -ra types <<< "$type"
@@ -52,7 +31,6 @@ for ((i=0; i<count; i++)); do
 
   for kw in "${keywords[@]}"; do
     for ft in "${types[@]}"; do
-      # 匹配 asset name 中包含 keyword 且以 file_type 结尾的 URL
       url=$(echo "$release_json" | jq -r ".assets[] | select(.name | contains(\"${kw}\") and endswith(\"${ft}\")) | .browser_download_url" | head -n1)
       [[ -z "$url" ]] && continue
 
@@ -68,11 +46,10 @@ for ((i=0; i<count; i++)); do
         if [[ "$ft" == "zip" ]]; then unzip -qo "$pkgfile" -d "$target_dir"; fi
         if [[ "$ft" == "tar.gz" ]]; then tar -xzf "$pkgfile" -C "$target_dir"; fi
 
-        # 平铺文件 (Move contents of sub-directories to the target_dir)
+        # 平铺文件
         shopt -s dotglob
         for item in "$target_dir"/*; do
           if [[ -d "$item" ]]; then
-            # 移动子目录内容到父目录
             for sub in "$item"/*; do
               # 如果已存在文件，覆盖
               mv -f "$sub" "$target_dir"/
@@ -101,31 +78,11 @@ for ((i=0; i<count; i++)); do
       fi
 
       # 设置可执行权限
-      # 查找目标目录下名字以 $exec 开头的文件并设置可执行权限
-      # find "$target_base/$name/$kw" -type f -name "$exec*" 2>/dev/null | head -n1 会在提取目录中找
-      # 更好的方式是查找所有目标文件，因为非压缩包直接放在了上级目录
-      
-      # 检查是否是压缩包解压（在 target_dir 中查找）
-      if [[ " ${extract_types[*]} " == *"$ft"* ]]; then
-        binpath=$(find "$target_dir" -type f -name "$exec*" 2>/dev/null | head -n1)
-      else
-        # 非压缩包（deb/ipk）直接是 target_file
-        if [[ "$(basename "$target_file")" == "$exec"* ]]; then
-            binpath="$target_file"
-        fi
-      fi
-
-      if [[ -n "$binpath" ]]; then
-          echo "    ⚙️ 设置可执行权限: $(basename "$binpath")"
-          chmod +x "$binpath"
-      fi
-      
+      binpath=$(find "$target_base/$name/$kw" -type f -name "$exec*" 2>/dev/null | head -n1)
+      [[ -n "$binpath" ]] && chmod +x "$binpath"
     done
   done
   echo "✅ $name 更新完成"
 done
 
 echo "🎉 全部更新完成 $(date '+%F %T')"
-
-# 清理临时目录
-rm -rf "$BASE_DIR"
