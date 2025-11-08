@@ -105,23 +105,40 @@ process_binary() {
     return 1
   }
 
+  # 调试：显示所有可用的资源文件
+  echo "    📋 可用资源列表:"
+  echo "$release_json" | jq -r '.assets[].name' | sed 's/^/       - /'
+  echo ""
+
   # 解析配置数组
   IFS='|' read -ra keywords <<< "$keyword"
   IFS='|' read -ra types <<< "$type"
   IFS='|' read -ra extract_types <<< "$extract"
   IFS='|' read -ra keep_types <<< "$keep_pkg"
 
+  echo "    🔍 搜索条件:"
+  echo "       关键字: ${keywords[*]}"
+  echo "       文件类型: ${types[*]}"
+  echo ""
+
   # 遍历关键字和文件类型
   local download_count=0
   for kw in "${keywords[@]}"; do
     for ft in "${types[@]}"; do
+      echo "    🔎 尝试匹配: 关键字='$kw', 类型='$ft'"
+      
       # 查找匹配的资源
       local url
       url=$(echo "$release_json" | jq -r \
         ".assets[] | select(.name | contains(\"${kw}\") and endswith(\"${ft}\")) | .browser_download_url" \
         | head -n1)
       
-      [[ -z "$url" ]] && continue
+      if [[ -z "$url" ]]; then
+        echo "       ❌ 未找到匹配"
+        continue
+      fi
+      
+      echo "       ✓ 找到匹配: $(basename "$url")"
 
       local pkgfile="$tmp_dir/$(basename "$url")"
       echo "    ⬇️  下载: $(basename "$url")"
