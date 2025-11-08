@@ -26,7 +26,7 @@ jobs:
           set -e
           echo "🟦 开始执行二进制更新任务 $(date '+%F %T')"
 
-          CONFIG_FILE="bin/binaries.yml"
+          CONFIG_FILE=".github/workflows/binaries.conf"
           BASE_DIR="/tmp/update_binaries"
           TARGET_BASE="bin"
           mkdir -p "$BASE_DIR" "$TARGET_BASE"
