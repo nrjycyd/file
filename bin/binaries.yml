@@ -22,7 +22,7 @@ binaries:
     repo: SagerNet/sing-box
     keyword: linux-amd64
     exec: sing-box
-    type: tar.gz
+    type: deb|tar.gz
     extract: tar.gz
     keep_pkg: false
 
