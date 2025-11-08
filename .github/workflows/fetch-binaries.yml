@@ -2,7 +2,7 @@ name: Update Binaries
 
 on:
   schedule:
-    - cron: "0 20 * * *" # 每天早上4点（UTC 20点）
+    - cron: "0 20 * * *" # 每天早上 4 点（UTC 20 点）
   workflow_dispatch:
 
 jobs:
@@ -16,7 +16,7 @@ jobs:
       - name: Setup environment
         run: |
           sudo apt update -y
-          sudo apt install -y curl unzip jq
+          sudo apt install -y curl unzip jq yq
 
       - name: Run update script
         run: |
@@ -24,54 +24,55 @@ jobs:
           set -e
           echo "🟦 开始执行二进制更新任务 $(date '+%F %T')"
 
-          # ========== 配置区 ==========
+          CONFIG_FILE="bin/binaries.yml"
           BASE_DIR="/tmp/update_binaries"
-          TARGET_BASE="bin"   # 所有程序将存放在仓库的 bin/ 目录下
-          mkdir -p "$BASE_DIR" "$TARGET_BASE/mosdns"
+          TARGET_BASE="bin"
 
-          binaries=(
-            "mosdns|https://github.com/yyysuo/mosdns/releases/latest/download|mosdns-linux-amd64.zip|mosdns|mosdns"
-            # 继续添加更多：
-            # "smartdns|https://github.com/pymumu/smartdns/releases/latest/download|smartdns-x86_64.zip|smartdns|smartdns"
-            # "sing-box|https://github.com/SagerNet/sing-box/releases/latest/download|sing-box-linux-amd64.tar.gz|sing-box|sing-box"
-          )
-          # =============================
+          mkdir -p "$BASE_DIR" "$TARGET_BASE"
 
-          update_binary() {
-            local name="$1"
-            local url="$2"
-            local pkg="$3"
-            local folder="$4"
-            local bin="$5"
-            local tmpdir="$BASE_DIR/${name}_tmp"
+          count=$(yq '.binaries | length' "$CONFIG_FILE")
+          echo "📦 读取到 $count 个二进制任务"
+
+          for ((i=0; i<count; i++)); do
+            name=$(yq -r ".binaries[$i].name" "$CONFIG_FILE")
+            repo=$(yq -r ".binaries[$i].repo" "$CONFIG_FILE")
+            file=$(yq -r ".binaries[$i].file" "$CONFIG_FILE")
+            target=$(yq -r ".binaries[$i].target" "$CONFIG_FILE")
+            exec=$(yq -r ".binaries[$i].exec" "$CONFIG_FILE")
+            type=$(yq -r ".binaries[$i].type" "$CONFIG_FILE")
 
             echo "🟩 更新 $name..."
+            tmpdir="$BASE_DIR/${name}_tmp"
             mkdir -p "$tmpdir"
 
-            local pkgfile="$tmpdir/$pkg"
-            echo "  ⬇️ 下载: $url/$pkg"
-            curl -L -o "$pkgfile" "$url/$pkg"
+            url="https://github.com/${repo}/releases/latest/download/${file}"
+            pkgfile="$tmpdir/$file"
+
+            echo "  ⬇️ 下载: $url"
+            curl -L -o "$pkgfile" "$url"
 
             echo "  📂 解压中..."
-            if [[ "$pkg" == *.zip ]]; then
+            if [[ "$type" == "zip" ]]; then
               unzip -qo "$pkgfile" -d "$tmpdir"
-            elif [[ "$pkg" == *.tar.gz ]]; then
+            elif [[ "$type" == "tar.gz" ]]; then
               tar -xzf "$pkgfile" -C "$tmpdir"
             else
-              echo "⚠️ 不支持的压缩格式: $pkg"
-              return
+              echo "⚠️ 不支持的压缩格式: $file"
+              continue
             fi
 
-            local target_dir="$TARGET_BASE/$folder"
+            target_dir="$TARGET_BASE/$target"
             mkdir -p "$target_dir"
             rm -rf "$target_dir"/*
             mv "$tmpdir"/* "$target_dir"/
-            echo "✅ $name 更新完成 → $target_dir/"
-          }
 
-          for entry in "${binaries[@]}"; do
-            IFS="|" read -r name url pkg folder bin <<< "$entry"
-            update_binary "$name" "$url" "$pkg" "$folder" "$bin"
+            binpath=$(find "$target_dir" -type f -name "$exec*" | head -n 1)
+            if [[ -n "$binpath" ]]; then
+              chmod +x "$binpath"
+              echo "✅ $name 更新完成 → $target_dir/"
+            else
+              echo "⚠️ 未找到执行文件 $exec"
+            fi
           done
 
           echo "🎉 全部更新完成 $(date '+%F %T')"
@@ -81,5 +82,5 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
           git add bin/
-          git commit -m "Auto update binaries $(date '+%F %T')" || echo "No changes to commit"
+          git commit -m "Auto update binaries $(date '+%F %T')" || echo "No changes"
           git push || true
