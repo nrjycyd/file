@@ -18,7 +18,7 @@ jobs:
       - name: Setup environment
         run: |
           sudo apt update -y
-          sudo apt install -y curl unzip jq yq tar gzip
+          sudo apt install -y curl unzip jq yq tar gzip ar
 
       - name: Run update script
         run: |
@@ -31,7 +31,6 @@ jobs:
           TARGET_BASE="bin"
           mkdir -p "$BASE_DIR" "$TARGET_BASE"
 
-          # 检查配置文件
           if [[ ! -f "$CONFIG_FILE" ]]; then
             echo "❌ 找不到配置文件 $CONFIG_FILE"
             exit 1
@@ -54,6 +53,7 @@ jobs:
             exec=$(yq -r ".binaries[$i].exec" "$CONFIG_FILE")
             type=$(yq -r ".binaries[$i].type" "$CONFIG_FILE")
             extract=$(yq -r ".binaries[$i].extract" "$CONFIG_FILE")
+            keep_pkg=$(yq -r ".binaries[$i].keep_pkg" "$CONFIG_FILE")
 
             echo "🟩 更新 $name..."
             tmpdir="$BASE_DIR/${name}_tmp"
@@ -62,9 +62,10 @@ jobs:
             echo "  🔍 获取最新 release..."
             release_json=$(curl -s "https://api.github.com/repos/${repo}/releases/latest")
 
-            # 使用 | 分隔符拆分关键字和类型
             IFS='|' read -ra keywords <<< "$keyword"
             IFS='|' read -ra types <<< "$type"
+            IFS='|' read -ra extract_types <<< "$extract"
+            IFS='|' read -ra keep_types <<< "$keep_pkg"
 
             for kw in "${keywords[@]}"; do
               for ft in "${types[@]}"; do
@@ -79,9 +80,9 @@ jobs:
                 echo "    ⬇️ 下载: $url"
                 curl -L -o "$pkgfile" "$url"
 
-                if [[ "$extract" == "true" ]]; then
+                # 判断是否解压
+                if [[ " ${extract_types[*]} " == *" $ft "* ]]; then
                   target_dir="$TARGET_BASE/$name/$kw"
-                  rm -rf "$target_dir"
                   mkdir -p "$target_dir"
 
                   echo "    📂 解压中..."
@@ -94,33 +95,35 @@ jobs:
                     continue
                   fi
 
-                  # 平铺内容，去掉压缩包顶层目录
+                  # 平铺文件，覆盖同名文件
                   shopt -s dotglob
                   for item in "$target_dir"/*; do
-                      if [[ -d "$item" ]]; then
-                          for sub in "$item"/*; do
-                              mv "$sub" "$target_dir"/
-                          done
-                          rmdir "$item" || true
-                      fi
+                    if [[ -d "$item" ]]; then
+                      for sub in "$item"/*; do
+                        mv -f "$sub" "$target_dir"/
+                      done
+                      rmdir "$item" || true
+                    fi
                   done
                   shopt -u dotglob
 
-                  rm -f "$pkgfile"
+                  # 仅对压缩包判断是否保留
+                  if [[ ! " ${keep_types[*]} " == *" $ft "* ]]; then
+                    rm -f "$pkgfile"
+                  fi
 
                 else
-                  # 不解压，直接生成文件名
+                  # 不解压文件（如 deb/ipk）直接移动，不受 keep_pkg 限制
                   target_file="$TARGET_BASE/$name/$kw.$ft"
                   mkdir -p "$(dirname "$target_file")"
-                  mv "$pkgfile" "$target_file"
+                  mv -f "$pkgfile" "$target_file"
                 fi
 
-                # 设置可执行权限（如果解压后有 exec 文件）
+                # 设置可执行权限
                 binpath=$(find "$TARGET_BASE/$name/$kw" -type f -name "$exec*" 2>/dev/null | head -n1)
                 if [[ -n "$binpath" ]]; then
                   chmod +x "$binpath"
                 fi
-
               done
             done
 
