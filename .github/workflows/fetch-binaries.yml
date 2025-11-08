@@ -14,25 +14,27 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
+          # 确保脚本有执行权限
+          
       - name: Setup environment
+        # 安装脚本所需的依赖工具
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -yqq curl unzip jq yq tar gzip
+          sudo apt update -y
+          sudo apt install -y curl unzip jq yq tar gzip binutils
 
       - name: Run update script
-        run: bash .github/workflows/update-binaries.sh
+        # 赋予脚本执行权限并运行
+        run: |
+          chmod +x ./fetch-binaries.sh
+          ./fetch-binaries.sh
+        # 推荐：如果需要调用私有仓库的 release，可以在这里传递 GITHUB_TOKEN
+        # env:
+        #   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Commit and push updates
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-          
-          if git diff --quiet && git diff --staged --quiet; then
-            echo "📭 没有检测到变更"
-            exit 0
-          fi
-          
           git add .
-          git commit -m "🤖 Auto update binaries $(date '+%F %T')"
-          git push
+          git commit -m "Auto update binaries $(date '+%F %T')" || echo "No changes"
+          git push || true
