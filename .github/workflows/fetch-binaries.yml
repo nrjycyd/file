@@ -80,11 +80,26 @@ jobs:
                 echo "    ⬇️ 下载: $url"
                 curl -L -o "$pkgfile" "$url"
 
+                target_dir="$TARGET_BASE/$name/$kw"
+                mkdir -p "$target_dir"
+
+                # 检查是否需要保留压缩包（仅对 zip/tar.gz 生效）
+                keep_this=false
+                if [[ "$ft" == "zip" || "$ft" == "tar.gz" ]]; then
+                  for k in "${keep_types[@]}"; do
+                    if [[ "$k" == "$ft" ]]; then
+                      keep_this=true
+                      break
+                    fi
+                  done
+                fi
+
+                if [[ "$keep_this" == true ]]; then
+                  cp -f "$pkgfile" "$target_dir/"
+                fi
+
                 # 判断是否解压
                 if [[ " ${extract_types[*]} " == *"$ft"* ]]; then
-                  target_dir="$TARGET_BASE/$name/$kw"
-                  mkdir -p "$target_dir"
-
                   echo "    📂 解压中..."
                   if [[ "$ft" == "zip" ]]; then
                     unzip -qo "$pkgfile" -d "$target_dir"
@@ -95,7 +110,7 @@ jobs:
                     continue
                   fi
 
-                  # 平铺文件，覆盖同名文件
+                  # 平铺文件，覆盖同名
                   shopt -s dotglob
                   for item in "$target_dir"/*; do
                     if [[ -d "$item" ]]; then
@@ -106,30 +121,18 @@ jobs:
                     fi
                   done
                   shopt -u dotglob
-
-                  # 仅对压缩包判断是否保留
-                  if [[ "$ft" == "zip" || "$ft" == "tar.gz" ]]; then
-                    keep_this=false
-                    for k in "${keep_types[@]}"; do
-                      if [[ "$k" == "$ft" ]]; then
-                        keep_this=true
-                        break
-                      fi
-                    done
-                    if [[ "$keep_this" != true ]]; then
-                      rm -f "$pkgfile"
-                    fi
-                  fi
-
                 else
-                  # 不解压文件（如 deb/ipk）直接移动，不受 keep_pkg 限制
-                  target_file="$TARGET_BASE/$name/$kw.$ft"
+                  # 不解压文件（如 deb/ipk）直接移动
+                  target_file="$target_dir/$kw.$ft"
                   mkdir -p "$(dirname "$target_file")"
                   mv -f "$pkgfile" "$target_file"
                 fi
 
+                # 删除临时文件（保留已复制的压缩包）
+                [[ "$keep_this" != true ]] && rm -f "$pkgfile"
+
                 # 设置可执行权限
-                binpath=$(find "$TARGET_BASE/$name/$kw" -type f -name "$exec*" 2>/dev/null | head -n1)
+                binpath=$(find "$target_dir" -type f -name "$exec*" 2>/dev/null | head -n1)
                 if [[ -n "$binpath" ]]; then
                   chmod +x "$binpath"
                 fi
