@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup environment
         run: |
@@ -29,10 +31,18 @@ jobs:
           TARGET_BASE="bin"
           mkdir -p "$BASE_DIR" "$TARGET_BASE"
 
-          # 清理 bin/ 下旧内容
-          echo "🧹 清理 bin/ 目录"
-          rm -rf "$TARGET_BASE"/*
-          mkdir -p "$TARGET_BASE"
+          # 检查配置文件是否存在
+          if [[ ! -f "$CONFIG_FILE" ]]; then
+            echo "❌ 找不到配置文件 $CONFIG_FILE"
+            exit 1
+          fi
+
+          # 清理 bin/ 下旧内容，但保留 binaries.yml
+          echo "🧹 清理 bin/ 目录（保留 binaries.yml）"
+          for item in "$TARGET_BASE"/*; do
+              [[ "$item" == "$TARGET_BASE/binaries.yml" ]] && continue
+              rm -rf "$item"
+          done
 
           count=$(yq '.binaries | length' "$CONFIG_FILE")
           echo "📦 读取到 $count 个二进制任务"
@@ -82,7 +92,7 @@ jobs:
                 continue
               fi
 
-              # 平铺内容，去掉压缩包自带顶层目录（稳健逻辑）
+              # 平铺内容，去掉压缩包自带顶层目录
               shopt -s dotglob
               for item in "$target_dir"/*; do
                   if [[ -d "$item" ]]; then
