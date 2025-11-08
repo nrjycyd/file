@@ -31,7 +31,7 @@ jobs:
           TARGET_BASE="bin"
           mkdir -p "$BASE_DIR" "$TARGET_BASE"
 
-          # 检查配置文件是否存在
+          # 检查配置文件
           if [[ ! -f "$CONFIG_FILE" ]]; then
             echo "❌ 找不到配置文件 $CONFIG_FILE"
             exit 1
@@ -62,63 +62,67 @@ jobs:
             echo "  🔍 获取最新 release..."
             release_json=$(curl -s "https://api.github.com/repos/${repo}/releases/latest")
 
-            url=$(echo "$release_json" | jq -r ".assets[] | select(.name | contains(\"${keyword}\") and endswith(\"${type}\")) | .browser_download_url" | head -n1)
-            if [[ -z "$url" ]]; then
-              echo "⚠️ 未找到 $name 对应的文件"
-              continue
-            fi
+            # 使用 | 分隔符拆分关键字和类型
+            IFS='|' read -ra keywords <<< "$keyword"
+            IFS='|' read -ra types <<< "$type"
 
-            pkgfile="$tmpdir/$(basename "$url")"
-            echo "  ⬇️ 下载: $url"
-            curl -L -o "$pkgfile" "$url"
+            for kw in "${keywords[@]}"; do
+              for ft in "${types[@]}"; do
+                echo "  🔹 处理组合: $kw.$ft"
+                url=$(echo "$release_json" | jq -r ".assets[] | select(.name | contains(\"${kw}\") and endswith(\"${ft}\")) | .browser_download_url" | head -n1)
+                if [[ -z "$url" ]]; then
+                  echo "⚠️ 未找到文件: $kw.$ft"
+                  continue
+                fi
 
-            if [[ "$extract" == "true" ]]; then
-              # 需要解压，目标为目录
-              target_dir="$TARGET_BASE/$name/$keyword"
-              rm -rf "$target_dir"
-              mkdir -p "$target_dir"
+                pkgfile="$tmpdir/$(basename "$url")"
+                echo "    ⬇️ 下载: $url"
+                curl -L -o "$pkgfile" "$url"
 
-              # 重命名压缩包到临时路径
-              tmp_pkg="$tmpdir/${keyword}.${type}"
-              mv "$pkgfile" "$tmp_pkg"
+                if [[ "$extract" == "true" ]]; then
+                  target_dir="$TARGET_BASE/$name/$kw"
+                  rm -rf "$target_dir"
+                  mkdir -p "$target_dir"
 
-              echo "  📂 解压中..."
-              if [[ "$type" == "zip" ]]; then
-                unzip -qo "$tmp_pkg" -d "$target_dir"
-              elif [[ "$type" == "tar.gz" ]]; then
-                tar -xzf "$tmp_pkg" -C "$target_dir"
-              else
-                echo "⚠️ 不支持的解压格式: $type"
-                continue
-              fi
-
-              # 平铺内容，去掉压缩包自带顶层目录
-              shopt -s dotglob
-              for item in "$target_dir"/*; do
-                  if [[ -d "$item" ]]; then
-                      for sub in "$item"/*; do
-                          mv "$sub" "$target_dir"/
-                      done
-                      rmdir "$item" || true
+                  echo "    📂 解压中..."
+                  if [[ "$ft" == "zip" ]]; then
+                    unzip -qo "$pkgfile" -d "$target_dir"
+                  elif [[ "$ft" == "tar.gz" ]]; then
+                    tar -xzf "$pkgfile" -C "$target_dir"
+                  else
+                    echo "⚠️ 不支持的解压格式: $ft"
+                    continue
                   fi
+
+                  # 平铺内容，去掉压缩包顶层目录
+                  shopt -s dotglob
+                  for item in "$target_dir"/*; do
+                      if [[ -d "$item" ]]; then
+                          for sub in "$item"/*; do
+                              mv "$sub" "$target_dir"/
+                          done
+                          rmdir "$item" || true
+                      fi
+                  done
+                  shopt -u dotglob
+
+                  rm -f "$pkgfile"
+
+                else
+                  # 不解压，直接生成文件名
+                  target_file="$TARGET_BASE/$name/$kw.$ft"
+                  mkdir -p "$(dirname "$target_file")"
+                  mv "$pkgfile" "$target_file"
+                fi
+
+                # 设置可执行权限（如果解压后有 exec 文件）
+                binpath=$(find "$TARGET_BASE/$name/$kw" -type f -name "$exec*" 2>/dev/null | head -n1)
+                if [[ -n "$binpath" ]]; then
+                  chmod +x "$binpath"
+                fi
+
               done
-              shopt -u dotglob
-
-              # 删除压缩包
-              rm -f "$tmp_pkg"
-
-            else
-              # 不解压，直接重命名到目标文件
-              target_file="$TARGET_BASE/$name/$keyword.$type"
-              mkdir -p "$(dirname "$target_file")"
-              mv "$pkgfile" "$target_file"
-            fi
-
-            # 设置可执行权限（如果解压后有 exec 文件）
-            binpath=$(find "$TARGET_BASE/$name/$keyword" -type f -name "$exec*" 2>/dev/null | head -n1)
-            if [[ -n "$binpath" ]]; then
-              chmod +x "$binpath"
-            fi
+            done
 
             echo "✅ $name 更新完成"
           done
