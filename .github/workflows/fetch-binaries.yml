@@ -29,6 +29,11 @@ jobs:
           TARGET_BASE="bin"
           mkdir -p "$BASE_DIR" "$TARGET_BASE"
 
+          # 清理 bin/ 下旧内容
+          echo "🧹 清理 bin/ 目录"
+          rm -rf "$TARGET_BASE"/*
+          mkdir -p "$TARGET_BASE"
+
           count=$(yq '.binaries | length' "$CONFIG_FILE")
           echo "📦 读取到 $count 个二进制任务"
 
