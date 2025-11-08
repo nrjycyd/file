@@ -15,7 +15,7 @@ binaries:
     keyword: x86_64-debian|x86_64-linux|x86_64-openwrt
     exec: smartdns
     type: deb|tar.gz|ipk
-    extract: tar.gz
+    extract: false
     keep_pkg: false
 
   - name: sing-box
