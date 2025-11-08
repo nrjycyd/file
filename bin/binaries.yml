@@ -11,14 +11,15 @@ binaries:
 
   - name: smartdns
     repo: pymumu/smartdns
-    keyword: x86_64-debian
+    keyword: x86_64-debian|x86_64-linux
     exec: smartdns
-    type: deb tar.gz
+    type: deb|tar.gz
     extract: false
 
   - name: sing-box
     repo: SagerNet/sing-box
     keyword: linux-amd64
     exec: sing-box
-    type: tar.gz deb
+    type: tar.gz
     extract: true
+
