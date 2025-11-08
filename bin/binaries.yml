@@ -11,7 +11,7 @@ binaries:
 
   - name: smartdns
     repo: pymumu/smartdns
-    keyword: x86_64-debian-all
+    keyword: x86_64-debian
     exec: smartdns
     type: deb
     extract: false         # deb 不需要解压
