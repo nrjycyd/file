@@ -5,20 +5,17 @@ binaries:
   - name: mosdns
     repo: yyysuo/mosdns
     keyword: linux-amd64
-    target: mosdns        # 解压后存放目录 bin/mosdns
     exec: mosdns          # 可执行文件名
     type: zip             # 压缩包类型
 
   - name: smartdns
     repo: pymumu/smartdns
     keyword: x86_64-linux
-    target: smartdns
     exec: smartdns
     type: tar.gz
 
   - name: sing-box
     repo: SagerNet/sing-box
     keyword: linux-amd64
-    target: sing-box
     exec: sing-box
     type: tar.gz
