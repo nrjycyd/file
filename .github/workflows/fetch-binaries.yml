@@ -18,7 +18,7 @@ jobs:
       - name: Setup environment
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -yqq curl unzip jq yq tar gzip binutils
+          sudo apt-get install -yqq curl unzip jq yq tar gzip
 
       - name: Run update script
         run: bash .github/workflows/update-binaries.sh
