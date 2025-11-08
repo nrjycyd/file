@@ -5,17 +5,24 @@
 
 set -euo pipefail
 
-# === 进入仓库根目录（防止路径偏移）===
-cd "$(dirname "$0")/../.."
-ROOT_DIR=$(pwd)
-echo "📂 当前工作目录: $ROOT_DIR"
+# GitHub Actions 的 run 步骤默认在仓库根目录执行
+# 但为了确保和调试，显示当前目录
+echo "📂 当前工作目录: $(pwd)"
+echo "🟦 开始执行二进制更新任务 $(date '+%F %T')"
+echo ""
 
+# ====================================================================
 # 配置
+# ====================================================================
 readonly CONFIG_FILE=".github/workflows/binaries.conf"
 readonly BASE_DIR="/tmp/update_binaries"
 readonly GITHUB_API="https://api.github.com"
 
-# 颜色输出
+# ====================================================================
+# 工具函数
+# ====================================================================
+
+# 日志函数
 log_info() { echo "🟦 $*"; }
 log_success() { echo "✅ $*"; }
 log_warn() { echo "⚠️  $*"; }
@@ -41,7 +48,7 @@ download_file() {
 }
 
 # 解压文件
-extract_archive() {
+extract_file() {
   local file="$1"
   local dest="$2"
   local type="$3"
@@ -66,7 +73,7 @@ extract_archive() {
   esac
 }
 
-# 平铺目录结构
+# 平铺目录结构（将子目录中的文件移到父目录）
 flatten_directory() {
   local target_dir="$1"
   
@@ -82,7 +89,9 @@ flatten_directory() {
   shopt -u dotglob nullglob
 }
 
+# ====================================================================
 # 处理单个二进制任务
+# ====================================================================
 process_binary() {
   local index="$1"
   
@@ -112,7 +121,7 @@ process_binary() {
 
   # 调试：显示所有可用的资源文件
   echo "    📋 可用资源列表:"
-  echo "$release_json" | jq -r '.assets[].name' | sed 's/^/       - /'
+  echo "$release_json" | jq -r '.assets[].name' | head -10 | sed 's/^/       - /'
   echo ""
 
   # 解析配置数组
@@ -121,29 +130,17 @@ process_binary() {
   IFS='|' read -ra extract_types <<< "$extract"
   IFS='|' read -ra keep_types <<< "$keep_pkg"
 
-  echo "    🔍 搜索条件:"
-  echo "       关键字: ${keywords[*]}"
-  echo "       文件类型: ${types[*]}"
-  echo ""
-
   # 遍历关键字和文件类型
   local download_count=0
   for kw in "${keywords[@]}"; do
     for ft in "${types[@]}"; do
-      echo "    🔎 尝试匹配: 关键字='$kw', 类型='$ft'"
-      
       # 查找匹配的资源
       local url
       url=$(echo "$release_json" | jq -r \
         ".assets[] | select(.name | contains(\"${kw}\") and endswith(\"${ft}\")) | .browser_download_url" \
         | head -n1)
       
-      if [[ -z "$url" ]]; then
-        echo "       ❌ 未找到匹配"
-        continue
-      fi
-      
-      echo "       ✓ 找到匹配: $(basename "$url")"
+      [[ -z "$url" ]] && continue
 
       local pkgfile="$tmp_dir/$(basename "$url")"
       echo "    ⬇️  下载: $(basename "$url")"
@@ -161,8 +158,8 @@ process_binary() {
       done
 
       if [[ "$should_extract" == "true" ]]; then
-        echo "    📂 解压: $ft"
-        extract_archive "$pkgfile" "$target_dir" "$ft" || continue
+        echo "    📂 解压: $ft → $target_dir"
+        extract_file "$pkgfile" "$target_dir" "$ft" || continue
         flatten_directory "$target_dir"
 
         # 判断是否保留压缩包
@@ -174,6 +171,7 @@ process_binary() {
         if [[ "$should_keep" == "true" ]]; then
           mkdir -p "$target_base/$name"
           cp -f "$pkgfile" "$target_base/$name/$kw.$ft"
+          echo "    💾 保留压缩包: $target_base/$name/$kw.$ft"
         fi
 
         rm -f "$pkgfile"
@@ -182,6 +180,7 @@ process_binary() {
         local target_file="$target_base/$name/$kw.$ft"
         mkdir -p "$(dirname "$target_file")"
         mv -f "$pkgfile" "$target_file"
+        echo "    💾 保存到: $target_file"
       fi
 
       # 设置可执行权限
@@ -203,19 +202,23 @@ process_binary() {
   return 0
 }
 
+# ====================================================================
 # 主函数
+# ====================================================================
 main() {
-  log_info "开始执行二进制更新任务 $(date '+%F %T')"
-
+  # 检查配置文件
   if [[ ! -f "$CONFIG_FILE" ]]; then
     log_error "配置文件不存在: $CONFIG_FILE"
     exit 1
   fi
 
+  # 读取配置数量
   local count
   count=$(yq '.binaries | length' "$CONFIG_FILE")
   log_info "读取到 $count 个二进制任务"
+  echo ""
 
+  # 处理所有任务
   local success=0
   local failed=0
 
@@ -231,11 +234,32 @@ main() {
   # 清理临时目录
   rm -rf "$BASE_DIR"
 
-  log_info "=========================================="
+  # 显示结果统计
+  echo "=========================================="
   log_success "成功: $success 个"
   [[ $failed -gt 0 ]] && log_warn "失败: $failed 个"
-  log_info "任务完成 $(date '+%F %T')"
-  log_info "=========================================="
+  echo ""
+
+  # 显示生成的文件
+  log_info "📁 生成的文件结构:"
+  local target_dirs
+  target_dirs=$(yq -r '.binaries[].target_base // "bin"' "$CONFIG_FILE" | sort -u)
+  
+  for dir in $target_dirs; do
+    if [[ -d "$dir" ]]; then
+      echo "   📂 $dir/"
+      find "$dir" -type f | head -20 | sed 's/^/      /'
+    fi
+  done
+  echo ""
+
+  # 显示 Git 状态
+  log_info "📊 Git 状态:"
+  git status --short | sed 's/^/   /'
+  echo ""
+  
+  log_info "🎉 任务完成 $(date '+%F %T')"
+  echo "=========================================="
 
   # 如果全部失败则返回错误
   [[ $success -eq 0 ]] && exit 1
