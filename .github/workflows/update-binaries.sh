@@ -5,6 +5,11 @@
 
 set -euo pipefail
 
+# === 进入仓库根目录（防止路径偏移）===
+cd "$(dirname "$0")/../.."
+ROOT_DIR=$(pwd)
+echo "📂 当前工作目录: $ROOT_DIR"
+
 # 配置
 readonly CONFIG_FILE=".github/workflows/binaries.conf"
 readonly BASE_DIR="/tmp/update_binaries"
