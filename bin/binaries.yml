@@ -1,0 +1,25 @@
+# bin/binaries.yml
+# 二进制更新清单
+
+binaries:
+  - name: mosdns
+    repo: yyysuo/mosdns
+    file: mosdns-linux-amd64.zip
+    target: mosdns     # 解压后放到 bin/mosdns/
+    exec: mosdns       # 可执行文件名
+    type: zip
+
+  - name: smartdns
+    repo: pymumu/smartdns
+    file: smartdns-x86_64.zip
+    target: smartdns
+    exec: smartdns
+    type: zip
+
+  # 示例：添加 sing-box
+  - name: sing-box
+    repo: SagerNet/sing-box
+    file: sing-box-linux-amd64.tar.gz
+    target: sing-box
+    exec: sing-box
+    type: tar.gz
