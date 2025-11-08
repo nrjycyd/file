@@ -5,20 +5,20 @@ binaries:
   - name: mosdns
     repo: yyysuo/mosdns
     keyword: linux-amd64
-    exec: mosdns          # 可执行文件名
-    type: zip             # 压缩包类型
-    extract: true         # 需要解压
+    exec: mosdns
+    type: zip
+    extract: true
 
   - name: smartdns
     repo: pymumu/smartdns
     keyword: x86_64-debian
     exec: smartdns
     type: deb
-    extract: false         # deb 不需要解压
+    extract: false
 
   - name: sing-box
     repo: SagerNet/sing-box
     keyword: linux-amd64
     exec: sing-box
     type: tar.gz
-    extract: true         # 需要解压
+    extract: true
