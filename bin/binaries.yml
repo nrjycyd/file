@@ -16,7 +16,7 @@ binaries:
     exec: smartdns
     type: deb|tar.gz|ipk
     extract: tar.gz
-    keep_pkg: tar.gz
+    keep_pkg: false
 
   - name: sing-box
     repo: SagerNet/sing-box
