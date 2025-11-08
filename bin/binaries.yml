@@ -12,7 +12,7 @@ binaries:
     repo: pymumu/smartdns
     keyword: x86_64-linux
     exec: smartdns
-    type: tar.gz
+    type: deb
 
   - name: sing-box
     repo: SagerNet/sing-box
