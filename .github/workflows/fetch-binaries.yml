@@ -1,66 +1,94 @@
-name: Fetch binaries
+name: Update Binaries
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '0 2 * * *' # 每天凌晨 2 点自动执行（可调整）
+    # 每天早上 4:00 自动执行（UTC 时间）
+    - cron: "0 20 * * *"
+  workflow_dispatch: # 允许手动触发
 
 jobs:
-  fetch:
+  update:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install unzip
-        run: sudo apt-get update && sudo apt-get install -y unzip
-
-      - name: Download latest mosdns release zip assets
+      - name: Setup environment
         run: |
-          mkdir -p bin/mosdns
-          cd bin/mosdns
+          sudo apt update -y
+          sudo apt install -y curl unzip jq
 
-          echo "🔍 获取 yyysuo/mosdns 最新 release..."
-          curl -s https://api.github.com/repos/yyysuo/mosdns/releases/latest > release.json
-
-          # 提取所有 .zip 文件的下载地址
-          grep "browser_download_url" release.json | grep ".zip" | cut -d '"' -f 4 > urls.txt
-
-          echo "📦 找到以下 ZIP 文件："
-          cat urls.txt
-
-          # 下载所有 zip 文件
-          while read -r url; do
-            [ -z "$url" ] && continue
-            fname=$(basename "$url")
-            echo "⬇️ 下载: $fname"
-            wget -q "$url" -O "$fname"
-          done < urls.txt
-
-      - name: Extract all zip archives
+      - name: Run update script
         run: |
-          cd bin/mosdns
-          for file in *.zip; do
-            [ -e "$file" ] || continue
-            folder="${file%.zip}"
-            echo "📂 解压: $file → $folder"
-            mkdir -p "$folder"
-            unzip -oq "$file" -d "$folder"
+          #!/bin/bash
+          set -e
+          echo "🟦 开始执行二进制更新任务 $(date '+%F %T')"
+
+          # ========== 配置区（只改这里） ==========
+          BASE_DIR="/tmp/update_binaries"
+          mkdir -p "$BASE_DIR"
+
+          # 二进制清单：名称 | 下载基础地址 | 包名 | 安装目录 | 主程序名
+          binaries=(
+            "mosdns|https://github.com/yyysuo/mosdns/releases/latest/download|mosdns-linux-amd64.zip|/cus/mosdns|mosdns"
+            "smartdns|https://github.com/pymumu/smartdns/releases/latest/download|smartdns-x86_64.zip|/cus/smartdns|smartdns"
+            # 可以继续追加 ↓
+            # "sing-box|https://github.com/SagerNet/sing-box/releases/latest/download|sing-box-linux-amd64.tar.gz|/cus/sing-box|sing-box"
+          )
+          # =======================================
+
+          update_binary() {
+            local name="$1"
+            local url="$2"
+            local pkg="$3"
+            local dir="$4"
+            local bin="$5"
+            local tmpdir="$BASE_DIR/${name}_tmp"
+
+            echo "🟩 更新 $name..."
+            mkdir -p "$tmpdir"
+
+            local pkgfile="$tmpdir/$pkg"
+            echo "  ⬇️ 下载: $url/$pkg"
+            curl -L -o "$pkgfile" "$url/$pkg"
+
+            echo "  📂 解压中..."
+            if [[ "$pkg" == *.zip ]]; then
+              unzip -qo "$pkgfile" -d "$tmpdir"
+            elif [[ "$pkg" == *.tar.gz ]]; then
+              tar -xzf "$pkgfile" -C "$tmpdir"
+            else
+              echo "⚠️ 不支持的压缩格式: $pkg"
+              return
+            fi
+
+            local binpath
+            binpath=$(find "$tmpdir" -type f -name "$bin*" | head -n 1)
+            if [[ -z "$binpath" ]]; then
+              echo "❌ 未找到可执行文件 $bin"
+              return
+            fi
+
+            chmod +x "$binpath"
+            mkdir -p "$dir"
+            mv -f "$binpath" "$dir/$bin"
+            echo "✅ $name 更新完成 → $dir/$bin"
+          }
+
+          for entry in "${binaries[@]}"; do
+            IFS="|" read -r name url pkg dir bin <<< "$entry"
+            update_binary "$name" "$url" "$pkg" "$dir" "$bin"
           done
 
-          # 清理压缩包与临时文件
-          rm -f *.zip urls.txt release.json
+          echo "🎉 全部更新完成 $(date '+%F %T')"
 
-      - name: Commit and push changes
+      - name: Commit and push (optional)
+        if: success()
         run: |
-          cd bin/mosdns
-          if [ -n "$(git status --porcelain)" ]; then
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git add .
-            git commit -m "Update mosdns latest binaries $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            git push
-          else
-            echo "✅ 没有更新"
-          fi
+          # 如果这些文件在仓库中（例如你存放了 /cus 目录），则提交变动
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git add .
+          git commit -m "Auto update binaries $(date '+%F %T')" || echo "No changes"
+          git push || true
